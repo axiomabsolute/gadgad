@@ -254,6 +254,136 @@ func TestCollect(t *testing.T) {
 	}
 }
 
+// --- TraverseAt ---
+
+// smallWords: {"CARE", "CARED", "RACE", "RACED", "ACE", "ACRE", "CRANE"}
+// CARE:  C=0 A=1 R=2 E=3
+// CARED: C=0 A=1 R=2 E=3 D=4
+// ACE:   A=0 C=1 E=2
+// ACRE:  A=0 C=1 R=2 E=3
+// CRANE: C=0 R=1 A=2 N=3 E=4
+
+func TestTraverseAt_KnownPosition(t *testing.T) {
+	idx := buildSmall(t)
+	// A at position 1: CARE(C=0,A=1), CARED(C=0,A=1), RACE(R=0,A=1), RACED(R=0,A=1).
+	// ACRE has A at position 0; CRANE has A at position 2 — both excluded.
+	words := index.Collect(idx.TraverseAt('A', 1))
+	want := map[string]bool{"CARE": true, "CARED": true, "RACE": true, "RACED": true}
+	for _, w := range words {
+		if !want[w] {
+			t.Errorf("TraverseAt('A',1): unexpected word %q", w)
+		}
+	}
+	for w := range want {
+		found := false
+		for _, got := range words {
+			if got == w {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("TraverseAt('A',1): missing expected word %q", w)
+		}
+	}
+}
+
+func TestTraverseAt_PositionFiltersCorrectly(t *testing.T) {
+	idx := buildSmall(t)
+	// A at position 0 — ACE (A=0), ACRE (A=0). NOT CARE (A=1) or CRANE (A=2).
+	words := index.Collect(idx.TraverseAt('A', 0))
+	for _, w := range words {
+		runes := []rune(w)
+		if len(runes) == 0 || runes[0] != 'A' {
+			t.Errorf("TraverseAt('A',0): returned %q which does not have A at position 0", w)
+		}
+	}
+	// CARE has A at position 1, must not appear.
+	for _, w := range words {
+		if w == "CARE" || w == "CARED" || w == "CRANE" {
+			t.Errorf("TraverseAt('A',0): unexpected word %q (A is not at position 0)", w)
+		}
+	}
+}
+
+func TestTraverseAt_UnknownAnchorEmpty(t *testing.T) {
+	idx := buildSmall(t)
+	count := 0
+	for range idx.TraverseAt('Z', 0) {
+		count++
+	}
+	if count != 0 {
+		t.Errorf("expected 0 results for unknown anchor Z, got %d", count)
+	}
+}
+
+func TestTraverseAt_OutOfRangePositionEmpty(t *testing.T) {
+	idx := buildSmall(t)
+	count := 0
+	for range idx.TraverseAt('A', 99) {
+		count++
+	}
+	if count != 0 {
+		t.Errorf("expected 0 results for out-of-range position, got %d", count)
+	}
+}
+
+func TestTraverseAt_NoSeparatorInResults(t *testing.T) {
+	idx := buildSmall(t)
+	for _, anchor := range []rune{'A', 'C', 'R', 'E'} {
+		for pos := 0; pos < 5; pos++ {
+			for word := range idx.TraverseAt(anchor, pos) {
+				if strings.ContainsRune(word, '+') {
+					t.Errorf("TraverseAt(%c,%d): word %q contains '+'", anchor, pos, word)
+				}
+			}
+		}
+	}
+}
+
+func TestTraverseAt_NoDuplicates(t *testing.T) {
+	idx := buildSmall(t)
+	for _, anchor := range []rune{'A', 'C', 'R', 'E'} {
+		for pos := 0; pos < 6; pos++ {
+			seen := make(map[string]struct{})
+			for word := range idx.TraverseAt(anchor, pos) {
+				if _, ok := seen[word]; ok {
+					t.Errorf("TraverseAt(%c,%d): duplicate word %q", anchor, pos, word)
+				}
+				seen[word] = struct{}{}
+			}
+		}
+	}
+}
+
+func TestTraverseAt_EarlyTermination(t *testing.T) {
+	idx := buildSmall(t)
+	count := 0
+	for range idx.TraverseAt('A', 1) {
+		count++
+		break
+	}
+	if count != 1 {
+		t.Errorf("expected exactly 1 result after break, got %d", count)
+	}
+}
+
+func TestTraverseAt_AnchorAtPosition(t *testing.T) {
+	idx := buildSmall(t)
+	// Every word yielded by TraverseAt(anchor, pos) must have anchor at pos.
+	for _, anchor := range []rune{'A', 'C', 'R', 'E', 'N'} {
+		for pos := 0; pos < 6; pos++ {
+			for word := range idx.TraverseAt(anchor, pos) {
+				runes := []rune(word)
+				if pos >= len(runes) || runes[pos] != anchor {
+					t.Errorf("TraverseAt(%c,%d): word %q does not have anchor at position %d",
+						anchor, pos, word, pos)
+				}
+			}
+		}
+	}
+}
+
 // --- Property test ---
 
 func TestProperty_EveryWordReachableFromEveryPosition(t *testing.T) {

@@ -60,3 +60,19 @@ func BenchmarkTraverse_TWL06_S(b *testing.B) {
 		}
 	}
 }
+
+func BenchmarkTraverseAt_TWL06_S(b *testing.B) {
+	path := "../testdata/twl06.txt"
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		b.Skip("testdata/twl06.txt not present")
+	}
+	idx, err := index.Build(dict.File(path))
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.ResetTimer()
+	for range b.N {
+		for range idx.TraverseAt('S', 0) {
+		}
+	}
+}

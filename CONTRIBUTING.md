@@ -19,9 +19,10 @@ go test ./... -v
 # Run tests for a specific package
 go test ./index/
 go test ./dict/
+go test ./query/
 
 # Run benchmarks (without updating BENCHMARKS.md)
-go test ./index/ -bench=. -benchmem -run='^$'
+go test ./index/ ./query/ -bench=. -benchmem -run='^$'
 
 # Check for vet issues
 go vet ./...
@@ -44,18 +45,25 @@ is worth preserving.
 To run a faster pass during development without updating the file:
 
 ```bash
-go test ./index/ -bench=. -benchmem -run='^$'
+go test ./index/ ./query/ -bench=. -benchmem -run='^$'
 ```
 
-**Full dictionary benchmarks** (`BenchmarkBuild_TWL06`, `BenchmarkTraverse_TWL06_S`)
-are skipped automatically when `testdata/twl06.txt` is absent. Supply the file to
-include full-dictionary results. The default benchmark time is 5 seconds per
-benchmark; override with the `BENCHTIME` environment variable:
+**Full dictionary benchmarks** are skipped automatically when `testdata/twl06.txt`
+is absent. Supply the file to include them. The default benchmark time is 5 seconds
+per benchmark; override with the `BENCHTIME` environment variable:
 
 ```bash
 BENCHTIME=1s ./scripts/bench.sh   # quick check
 BENCHTIME=10s ./scripts/bench.sh  # higher-precision run
 ```
+
+The query layer has two anagram benchmarks that cover different performance
+characteristics:
+
+| Benchmark | Rack | Notes |
+|---|---|---|
+| `Anagram_TWL06_Common` | `AEINTRS` | Worst case: common letters, anchor `S` appears in most words |
+| `Anagram_TWL06_Moderate` | `ABORVXZ` | Typical case: rare anchor letter, fast path |
 
 ## Commit Message Convention
 

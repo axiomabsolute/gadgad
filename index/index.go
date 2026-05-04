@@ -167,6 +167,73 @@ func (idx *Index) Traverse(anchor rune) iter.Seq[string] {
 	}
 }
 
+// TraverseAt returns an iterator over all words in the index where anchor
+// appears at exactly the given zero-indexed position. The '+' separator never
+// appears in yielded strings. Results contain no duplicates.
+//
+// This is more efficient than Traverse for position-constrained queries: it
+// prunes wrong-position branches during the DFS rather than post-hoc, and
+// returns fully decoded words so callers never need to parse rotation strings.
+func (idx *Index) TraverseAt(anchor rune, position int) iter.Seq[string] {
+	return func(yield func(string) bool) {
+		start := idx.root.child(anchor)
+		if start == nil || position < 0 {
+			return
+		}
+
+		// walkSuffix traverses edges after the '+' separator, building suffixBuf.
+		// prefixBuf is the reversed prefix (anchor + chars before anchor, reversed)
+		// accumulated during walkPrefix; it is read-only here.
+		var walkSuffix func(n *node, prefixBuf, suffixBuf []rune) bool
+		walkSuffix = func(n *node, prefixBuf, suffixBuf []rune) bool {
+			if n.terminal {
+				// Reconstruct word: reverse prefixBuf then append suffixBuf.
+				wordBuf := make([]rune, len(prefixBuf)+len(suffixBuf))
+				for i, r := range prefixBuf {
+					wordBuf[len(prefixBuf)-1-i] = r
+				}
+				copy(wordBuf[len(prefixBuf):], suffixBuf)
+				if !yield(string(wordBuf)) {
+					return false
+				}
+			}
+			for r := rune('A'); r <= 'Z'; r++ {
+				child := n.child(r)
+				if child != nil {
+					if !walkSuffix(child, prefixBuf, append(suffixBuf, r)) {
+						return false
+					}
+				}
+			}
+			return true
+		}
+
+		// walkPrefix traverses non-separator edges until depth == position,
+		// then takes the separator edge and hands off to walkSuffix.
+		var walkPrefix func(n *node, depth int, prefixBuf []rune) bool
+		walkPrefix = func(n *node, depth int, prefixBuf []rune) bool {
+			if depth == position {
+				sepChild := n.child(Separator)
+				if sepChild == nil {
+					return true
+				}
+				return walkSuffix(sepChild, prefixBuf, nil)
+			}
+			for r := rune('A'); r <= 'Z'; r++ {
+				child := n.child(r)
+				if child != nil {
+					if !walkPrefix(child, depth+1, append(prefixBuf, r)) {
+						return false
+					}
+				}
+			}
+			return true
+		}
+
+		walkPrefix(start, 0, []rune{anchor})
+	}
+}
+
 // Collect materializes all values from seq into a slice.
 func Collect(seq iter.Seq[string]) []string {
 	var out []string
