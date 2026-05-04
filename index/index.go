@@ -9,12 +9,25 @@ import (
 	"github.com/axiomabsolute/gadgad/dict"
 )
 
+// traversalOrder is the fixed DFS edge iteration order for TraverseRaw: Separator then A–Z.
+// Allocated once at init; never modified.
+var traversalOrder = func() []rune {
+	out := make([]rune, 27)
+	out[0] = Separator
+	for i := range 26 {
+		out[1+i] = rune('A' + i)
+	}
+	return out
+}()
+
 // Index is an immutable GADDAG index built from a word list.
 // It supports single-anchor traversal to find all words containing a given
 // letter at any position.
 type Index struct {
 	root      *node
 	wordCount int
+	nodeCount int
+	edgeCount int
 }
 
 // IndexStats holds aggregate metrics about the index.
@@ -25,7 +38,7 @@ type IndexStats struct {
 }
 
 // Build constructs a GADDAG index from the words provided by src.
-// Words must be ASCII-encodeable; non-ASCII words cause an error.
+// Words must contain only uppercase ASCII letters (A–Z); other input causes an error.
 // Build normalizes words to uppercase (delegating to the Source) and
 // deduplicates before construction.
 func Build(src dict.Source) (*Index, error) {
@@ -36,13 +49,13 @@ func Build(src dict.Source) (*Index, error) {
 
 	// Validate and deduplicate.
 	seen := make(map[string]struct{}, len(words))
-	unique := words[:0]
+	unique := make([]string, 0, len(words))
 	for _, w := range words {
 		if w == "" {
 			continue
 		}
 		if !isASCIIUpper(w) {
-			return nil, fmt.Errorf("gadgad: word %q contains non-ASCII or non-uppercase runes", w)
+			return nil, fmt.Errorf("gadgad: word %q contains characters outside A–Z", w)
 		}
 		if _, ok := seen[w]; !ok {
 			seen[w] = struct{}{}
@@ -54,6 +67,10 @@ func Build(src dict.Source) (*Index, error) {
 	// Generate and sort all rotation strings.
 	rotList := buildRotationList(words)
 	sort.Strings(rotList)
+
+	// Pre-allocate reusable buffers for insertSuffix (sized for a typical word length).
+	pathBuf := make([]*node, 0, 20)
+	edgesBuf := make([]rune, 0, 20)
 
 	// Build the minimized DAWG using Daciuk's algorithm.
 	root := newNode()
@@ -74,10 +91,11 @@ func Build(src dict.Source) (*Index, error) {
 		}
 
 		// Insert the new suffix into the trie starting from the common prefix node.
-		path, edges := insertSuffix(root, rot, lcpLen)
+		lastPath, lastEdges = insertSuffix(root, rot, lcpLen, pathBuf, edgesBuf)
+		// Update buffer headers so any growth from insertSuffix is retained.
+		pathBuf = lastPath[:0]
+		edgesBuf = lastEdges[:0]
 		lastRot = rot
-		lastPath = path
-		lastEdges = edges
 	}
 
 	// Minimize the final path.
@@ -85,17 +103,17 @@ func Build(src dict.Source) (*Index, error) {
 		m.replaceOrRegister(lastPath, lastEdges)
 	}
 
-	idx := &Index{root: root, wordCount: len(words)}
-	return idx, nil
+	nodes, edges := countNodesEdges(root, make(map[*node]struct{}))
+	return &Index{root: root, wordCount: len(words), nodeCount: nodes, edgeCount: edges}, nil
 }
 
-// Stats returns aggregate metrics about the index.
+// Stats returns aggregate metrics about the index. It is a free struct copy;
+// graph metrics are computed once during Build.
 func (idx *Index) Stats() IndexStats {
-	nodes, edges := countNodesEdges(idx.root, make(map[*node]struct{}))
 	return IndexStats{
 		WordCount: idx.wordCount,
-		NodeCount: nodes,
-		EdgeCount: edges,
+		NodeCount: idx.nodeCount,
+		EdgeCount: idx.edgeCount,
 	}
 }
 
@@ -116,7 +134,7 @@ func (idx *Index) TraverseRaw(anchor rune) iter.Seq[string] {
 					return false
 				}
 			}
-			for _, r := range append([]rune{Separator}, alphabetRunes()...) {
+			for _, r := range traversalOrder {
 				child := n.child(r)
 				if child != nil {
 					if !walk(child, append(buf, r)) {
@@ -137,7 +155,7 @@ func (idx *Index) Traverse(anchor rune) iter.Seq[string] {
 	return func(yield func(string) bool) {
 		seen := make(map[string]struct{})
 		for rot := range idx.TraverseRaw(anchor) {
-			word := rotationToWord(rot)
+			word := RotationToWord(rot)
 			if _, ok := seen[word]; ok {
 				continue
 			}
@@ -158,19 +176,17 @@ func Collect(seq iter.Seq[string]) []string {
 	return out
 }
 
-// rotationToWord reconstructs the original word from a GADDAG rotation string.
-// The rotation format is: <anchor><reversed-prefix>+<suffix>
-// The original word is: reverse(<anchor><reversed-prefix>) + <suffix>
-// = <prefix><anchor> ... reversed ... + suffix
-// Concretely: join(reverse(part before '+'), part after '+')
-func rotationToWord(rot string) string {
+// RotationToWord reconstructs the original word from a GADDAG rotation string.
+// The rotation format is: <reversed-prefix-including-anchor>+<suffix>
+// Reversing the portion before '+' and concatenating with the portion after
+// recovers the original word.
+func RotationToWord(rot string) string {
 	sepIdx := strings.IndexRune(rot, '+')
 	if sepIdx < 0 {
 		return rot
 	}
 	prefix := []rune(rot[:sepIdx])
 	suffix := rot[sepIdx+1:]
-	// Reverse the prefix to recover the original word order up to the anchor.
 	for i, j := 0, len(prefix)-1; i < j; i, j = i+1, j-1 {
 		prefix[i], prefix[j] = prefix[j], prefix[i]
 	}
@@ -182,7 +198,7 @@ func rotationToWord(rot string) string {
 func buildRotationList(words []string) []string {
 	total := 0
 	for _, w := range words {
-		total += len([]rune(w))
+		total += len(w) // all ASCII: byte length equals rune length
 	}
 	all := make([]string, 0, total)
 	for _, w := range words {
@@ -193,45 +209,55 @@ func buildRotationList(words []string) []string {
 
 // insertSuffix inserts the portion of rot starting at offset lcpLen into the
 // trie rooted at root, following existing nodes for the common prefix portion.
-// Returns the full path from root to the new terminal node, and the edges
-// (rune labels) connecting each consecutive pair.
-func insertSuffix(root *node, rot string, lcpLen int) ([]*node, []rune) {
-	runes := []rune(rot)
-	// Walk the existing common prefix nodes.
-	path := make([]*node, 0, len(runes)+1)
-	edges := make([]rune, 0, len(runes))
+// path and edges are caller-owned buffers; they are re-sliced to [:0] on entry.
+// Returns path and edges populated with the full inserted path.
+// rot must contain only single-byte ASCII characters.
+func insertSuffix(root *node, rot string, lcpLen int, path []*node, edges []rune) ([]*node, []rune) {
+	path = path[:0]
+	edges = edges[:0]
 	cur := root
 	path = append(path, cur)
 	for i := 0; i < lcpLen; i++ {
-		cur = cur.child(runes[i])
+		r := rune(rot[i])
+		cur = cur.child(r)
 		path = append(path, cur)
-		edges = append(edges, runes[i])
+		edges = append(edges, r)
 	}
-	// Insert new nodes for the novel suffix.
-	for i := lcpLen; i < len(runes); i++ {
+	for i := lcpLen; i < len(rot); i++ {
+		r := rune(rot[i])
 		next := newNode()
-		cur.setChild(runes[i], next)
+		cur.setChild(r, next)
 		cur = next
 		path = append(path, cur)
-		edges = append(edges, runes[i])
+		edges = append(edges, r)
 	}
 	cur.terminal = true
 	return path, edges
 }
 
 // commonPrefixLen returns the length of the longest common prefix of a and b.
+// Both strings must contain only single-byte ASCII characters.
 func commonPrefixLen(a, b string) int {
-	ra, rb := []rune(a), []rune(b)
-	n := len(ra)
-	if len(rb) < n {
-		n = len(rb)
+	n := len(a)
+	if len(b) < n {
+		n = len(b)
 	}
 	for i := 0; i < n; i++ {
-		if ra[i] != rb[i] {
+		if a[i] != b[i] {
 			return i
 		}
 	}
 	return n
+}
+
+// isASCIIUpper reports whether every byte in s is an uppercase ASCII letter (A–Z).
+func isASCIIUpper(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] < 'A' || s[i] > 'Z' {
+			return false
+		}
+	}
+	return true
 }
 
 // countNodesEdges counts unique nodes and edges in the graph via DFS.

@@ -20,14 +20,41 @@ go test ./... -v
 go test ./index/
 go test ./dict/
 
-# Run benchmarks (small wordlist)
-go test ./index/ -bench=. -benchmem -run='^$'
-
-# Run benchmarks against TWL06 (supply testdata/twl06.txt first)
+# Run benchmarks (without updating BENCHMARKS.md)
 go test ./index/ -bench=. -benchmem -run='^$'
 
 # Check for vet issues
 go vet ./...
+```
+
+## Benchmarks
+
+Run `scripts/bench.sh` to execute the full benchmark suite and update the
+Current section of `BENCHMARKS.md` with fresh results:
+
+```bash
+./scripts/bench.sh
+```
+
+The script records the git commit hash and date alongside the numbers so results
+are always traceable. The Previous baseline and Delta sections in `BENCHMARKS.md`
+are not touched — update those manually when a significant before/after comparison
+is worth preserving.
+
+To run a faster pass during development without updating the file:
+
+```bash
+go test ./index/ -bench=. -benchmem -run='^$'
+```
+
+**Full dictionary benchmarks** (`BenchmarkBuild_TWL06`, `BenchmarkTraverse_TWL06_S`)
+are skipped automatically when `testdata/twl06.txt` is absent. Supply the file to
+include full-dictionary results. The default benchmark time is 5 seconds per
+benchmark; override with the `BENCHTIME` environment variable:
+
+```bash
+BENCHTIME=1s ./scripts/bench.sh   # quick check
+BENCHTIME=10s ./scripts/bench.sh  # higher-precision run
 ```
 
 ## Commit Message Convention

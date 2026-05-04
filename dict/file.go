@@ -28,11 +28,11 @@ func (f *FileSource) Words() ([]string, error) {
 	var out []string
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
+		w := normalize(scanner.Text())
+		if w == "" || strings.HasPrefix(w, "#") {
 			continue
 		}
-		out = append(out, normalize(line))
+		out = append(out, w)
 	}
 	if err := scanner.Err(); err != nil {
 		return nil, err

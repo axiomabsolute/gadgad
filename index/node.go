@@ -24,22 +24,3 @@ func (n *node) child(r rune) *node {
 func (n *node) setChild(r rune, child *node) {
 	n.children[r] = child
 }
-
-// isASCIIUpper reports whether every rune in s is an uppercase ASCII letter (A–Z).
-func isASCIIUpper(s string) bool {
-	for _, r := range s {
-		if r < 'A' || r > 'Z' {
-			return false
-		}
-	}
-	return true
-}
-
-// alphabetRunes returns the 26 uppercase ASCII letter runes A–Z.
-func alphabetRunes() []rune {
-	out := make([]rune, 26)
-	for i := range 26 {
-		out[i] = rune('A' + i)
-	}
-	return out
-}

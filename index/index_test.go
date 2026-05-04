@@ -149,6 +149,17 @@ func TestTraverse_UnknownAnchorEmpty(t *testing.T) {
 	}
 }
 
+func TestTraverse_SingleLetterWord(t *testing.T) {
+	idx, err := index.Build(dict.Slice([]string{"A"}))
+	if err != nil {
+		t.Fatalf("Build failed: %v", err)
+	}
+	words := index.Collect(idx.Traverse('A'))
+	if len(words) != 1 || words[0] != "A" {
+		t.Errorf("expected [A], got %v", words)
+	}
+}
+
 // TestTraverse_AllWordsReachable checks that every word in the index is
 // reachable via every one of its letter positions.
 func TestTraverse_AllWordsReachable(t *testing.T) {
@@ -170,14 +181,13 @@ func TestTraverse_AllWordsReachable(t *testing.T) {
 }
 
 // TestTraverse_ConsistencyWithRaw asserts that reconstructing words from
-// TraverseRaw produces the same set as Traverse for each anchor.
+// TraverseRaw via RotationToWord produces the same set as Traverse for each anchor.
 func TestTraverse_ConsistencyWithRaw(t *testing.T) {
 	idx := buildSmall(t)
 	for _, anchor := range []rune{'A', 'C', 'R', 'E', 'N'} {
 		fromRaw := make(map[string]struct{})
 		for rot := range idx.TraverseRaw(anchor) {
-			word := rotationToWord(rot)
-			fromRaw[word] = struct{}{}
+			fromRaw[index.RotationToWord(rot)] = struct{}{}
 		}
 		fromTraverse := make(map[string]struct{})
 		for word := range idx.Traverse(anchor) {
@@ -196,19 +206,36 @@ func TestTraverse_ConsistencyWithRaw(t *testing.T) {
 	}
 }
 
-// rotationToWord is a test-local copy of the reconstruction logic so that
-// TestTraverse_ConsistencyWithRaw can verify it independently.
-func rotationToWord(rot string) string {
-	sepIdx := strings.IndexRune(rot, '+')
-	if sepIdx < 0 {
-		return rot
+// --- RotationToWord ---
+
+func TestRotationToWord_SingleLetter(t *testing.T) {
+	if got := index.RotationToWord("A+"); got != "A" {
+		t.Errorf("expected %q, got %q", "A", got)
 	}
-	prefix := []rune(rot[:sepIdx])
-	suffix := rot[sepIdx+1:]
-	for i, j := 0, len(prefix)-1; i < j; i, j = i+1, j-1 {
-		prefix[i], prefix[j] = prefix[j], prefix[i]
+}
+
+func TestRotationToWord_AnchorAtFirst(t *testing.T) {
+	if got := index.RotationToWord("C+ARED"); got != "CARED" {
+		t.Errorf("expected %q, got %q", "CARED", got)
 	}
-	return string(prefix) + suffix
+}
+
+func TestRotationToWord_AnchorAtMiddle(t *testing.T) {
+	if got := index.RotationToWord("RAC+ED"); got != "CARED" {
+		t.Errorf("expected %q, got %q", "CARED", got)
+	}
+}
+
+func TestRotationToWord_AnchorAtLast(t *testing.T) {
+	if got := index.RotationToWord("DERAC+"); got != "CARED" {
+		t.Errorf("expected %q, got %q", "CARED", got)
+	}
+}
+
+func TestRotationToWord_NoSeparator(t *testing.T) {
+	if got := index.RotationToWord("CARED"); got != "CARED" {
+		t.Errorf("expected %q, got %q", "CARED", got)
+	}
 }
 
 // --- Collect ---
