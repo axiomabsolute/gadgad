@@ -1,0 +1,33 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binaries
+*.test
+
+# Output files
+*.out
+
+# Coverage
+coverage.out
+coverage.html
+
+# Vendor
+/vendor/
+
+# Large wordlist files (check in small test fixtures, not full dictionaries)
+testdata/*.txt
+!testdata/small_*.txt
+
+# macOS
+.DS_Store
+
+# JetBrains IDEs
+*.iml
+.idea/
+
+# VS Code
+.vscode/

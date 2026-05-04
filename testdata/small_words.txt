@@ -1,0 +1,73 @@
+# Small curated word list for deterministic unit tests.
+# Words chosen for good anchor coverage: varied lengths, shared prefixes/suffixes,
+# letters that appear at first/middle/last positions across multiple words.
+
+# 3-letter words
+ACE
+ACT
+ARC
+ARE
+ATE
+EAR
+EAT
+ERA
+OAR
+ORE
+
+# 4-letter words
+ACRE
+CARE
+CARD
+CART
+DARE
+DARK
+EARN
+RACE
+RACK
+RARE
+RATE
+
+# 5-letter words
+CARED
+CARES
+DARED
+DARES
+RACED
+RACER
+TRACE
+GRACE
+SPACE
+STARE
+SPARE
+SHARE
+GLARE
+FLARE
+BLARE
+SNARE
+SCARE
+CRANE
+GRAPE
+
+# 6-letter words
+GRACED
+PLACED
+RAREST
+SHARED
+SPARED
+SCARED
+TRACED
+TRACER
+GRAPES
+SCARES
+SNARED
+GLARED
+FLARED
+
+# 7-letter words
+CREATES
+SCARRED
+TRACERS
+GRADERS
+SHARPER
+SPARRED
+ERASURE
