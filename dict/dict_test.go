@@ -71,7 +71,7 @@ func writeTempFile(t *testing.T, content string) string {
 	if _, err := f.WriteString(content); err != nil {
 		t.Fatal(err)
 	}
-	f.Close()
+	f.Close() //nolint:errcheck
 	return f.Name()
 }
 

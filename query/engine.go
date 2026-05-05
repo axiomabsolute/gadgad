@@ -99,7 +99,7 @@ func matchSlots(runes []rune, p Pattern) bool {
 				}
 				rack[r-'A']--
 			}
-		case s.isAny():
+		default:
 			// Any letter accepted; no rack consumption.
 		}
 	}

@@ -27,7 +27,6 @@ var Any = Slot{kind: slotAny}
 
 func (s Slot) isFixed() bool { return s.kind == slotFixed }
 func (s Slot) isFree() bool  { return s.kind == slotFree }
-func (s Slot) isAny() bool   { return s.kind == slotAny }
 
 // letter panics if s is not Fixed.
 func (s Slot) fixedLetter() rune {

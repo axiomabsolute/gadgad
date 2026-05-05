@@ -3,8 +3,25 @@
 ## Prerequisites
 
 - Go 1.23 or later
+- [pre-commit](https://pre-commit.com/#installation) (`brew install pre-commit`)
+- [golangci-lint](https://golangci-lint.run/welcome/install/) v2+ (`brew install golangci-lint`)
+
+After cloning, run once to install the git hooks:
+
+```bash
+make setup
+```
 
 ## Common Commands
+
+```bash
+make setup   # install pre-commit hooks (run once after clone)
+make build   # go build ./...
+make test    # go test ./...
+make lint    # golangci-lint run ./...
+```
+
+Raw commands if preferred:
 
 ```bash
 # Build all packages
